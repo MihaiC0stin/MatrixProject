@@ -58,5 +58,17 @@ Pentru a ajunge la nivelul 7 playerul are 2 optiuni. Una dintre ele este sa omoa
 
 Link: https://youtu.be/iqaTxT9OfF0
 
+# Buguri
+
+1. Pe video se poate sa apara ca apas uneori de 2 ori, la Toggle sound, am rezolvat, trebuia scos print ul din if-ul care verifica daca butonul a fost apasat.
+2. Mai este un singur bug, care apare rar, am stat ore, daca nu zile sa inteleg din ce cauza apare, si sa-l recreez macar. Uneori sunt pe mapa niste monstrii "fantoma", nu poti trece prin ei, sau sa le dai damage si au blink, dar nu se misca spre player, nici ataca cand e in fata lui. Suspectez ca problema ar fi cand ii adaug, sau cand ii scot din array, dar totul pare in regula acolo.
+
+# Mentiuni
+
+Fata de cand am prezentat la laborator, am rezolvat majoritatea bugurilor, inclusiv highscore (fun fact: bugul acela era din cauza ca puneam score ul in highscore din momentul cand se termina jocul, iar acesta era deja sortat pana sa ajunga in functia de setare nume, de aceea numele ramanea mereu pe ultimul loc, iar scorul pe primul), am refacut setupul (e rezistent acm, nu mai scot firele alea nici de-as vrea :D ), am adaugat setarile in EEPROM (raman aceleasi setari dupa reset la arduino) si am adaugat animatii pentru meniu si startup.
+N-am adaugat buzzer si nici n-am salvat highscore-urile in EEPROM.
+
+PS. Am pus la 1 dimineata inca un commit fiindca mi-am amintit sa mentionez cateva buguri si am mai adaugat cateva comentarii unde cred ca trebuia. Promit sa fie ultimul, o sa ma bucur de sarbatori. :))
+
 
 
