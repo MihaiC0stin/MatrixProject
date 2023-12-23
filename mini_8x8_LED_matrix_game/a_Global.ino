@@ -32,7 +32,7 @@ const byte left = 0;
 const byte right = 1;
 const byte up = 2;
 const byte down = 3;
-
+//
 const byte lcdAnode = 3;
 const byte rs = 9;
 const byte en = 8;
@@ -40,21 +40,20 @@ const byte d4 = 7;
 const byte d5 = 6;
 const byte d6 = 5;
 const byte d7 = 4;
-
-const int maxQueueSize = 254;
-const byte maxNumberOfMonsters = 56;
+//
+const byte maxNumberOfMonsters = 56; //calculated exactly for 7 lvls full of monsters
 
 const byte maxMatrixBrightness = 15;
 const int maxLcdBrightness = 255;
-
+//
 const byte numberOfCharacters = 53;
 const byte maxNameLength = 10;
 const byte numberOfHighscores = 5;
-
+//
 const byte eepromAdressMatrixBrightness = 10;
 const byte eepromAdressLcdBrightness = 20;
 const byte eepromAdressSoundStatus = 30;
-
+//
 
 byte matrixStickmanMove[matrixSize] = {
   B00011000,
@@ -202,7 +201,6 @@ bool inMenu = true;
 bool inGame = false;
 bool gameOver = false;
 
-int money = 0;
 int score = 0;
 int lastScore = 0;
 int highscores[numberOfHighscores];
@@ -246,7 +244,7 @@ public:
 
   void blink() {
     if (millis() - lastBlink >= blinkRate) {
-      this->blinked = !blinked;
+      this->blinked = !blinked;                 //blinked is what is shown on matrix (0 and 1).
       matrixChanged = true;
       lastBlink = millis();
     }
@@ -277,13 +275,13 @@ public:
     : GameEntity(id, health, blinkRate) {
   }
 
-  void spawnMonsters(byte iteratorStart, byte numberOfMonsters) {
-    this->numberOfMonsters = this->numberOfMonsters + numberOfMonsters;
-    for (int currentMonster = iteratorStart; currentMonster < numberOfMonsters; currentMonster++) {
+  void spawnMonsters(byte iteratorStart, byte numberOfMonsters) {               //iteratorStart is the actual numberOfMonsters, numberOfMonsters here is what amount of monsters is added.
+    this->numberOfMonsters = this->numberOfMonsters + numberOfMonsters;         // update the number of monsters
+    for (int currentMonster = iteratorStart; currentMonster < numberOfMonsters; currentMonster++) {       //update the arrays
       MonstersHealth[currentMonster] = health;
-      xPosMonsters[currentMonster] = random(0, mapSize);
+      xPosMonsters[currentMonster] = random(0, mapSize);                                                  //monsters should be spawned random
       yPosMonsters[currentMonster] = random(0, mapSize);
-      if (outputMatrix[xPosMonsters[currentMonster]][yPosMonsters[currentMonster]] != 0) {
+      if (outputMatrix[xPosMonsters[currentMonster]][yPosMonsters[currentMonster]] != 0) {                // but I don't want it to be spawned into a wall, or on the player
         currentMonster--;
       } else {
         outputMatrix[xPosMonsters[currentMonster]][yPosMonsters[currentMonster]] = id;
@@ -291,20 +289,20 @@ public:
     }
   }
 
-  void ManageMonsterHealth(byte xPos, byte yPos, byte damageReceived) {
+  void ManageMonsterHealth(byte xPos, byte yPos, byte damageReceived) {                                   // takes coordinates of the monster that got hit, and search in array what monster has these coordinates
     for (byte currentMonster = 0; currentMonster < numberOfMonsters; currentMonster++) {
       if (xPosMonsters[currentMonster] == xPos && yPosMonsters[currentMonster] == yPos) {
         if ((MonstersHealth[currentMonster] - damageReceived) <= 0) {
-          outputMatrix[xPosMonsters[currentMonster]][yPosMonsters[currentMonster]] = 0;
+          outputMatrix[xPosMonsters[currentMonster]][yPosMonsters[currentMonster]] = 0;                   // if health is 0 or lower, remove the monster from array and increase score of the player
           score = score + scoreValue;
-          if (currentMonster != numberOfMonsters - 1) {
+          if (currentMonster != numberOfMonsters - 1) {                                                   // if is not the last monster, then I shift to the left all monsters after the current monster
             for (byte iterator = currentMonster; iterator < numberOfMonsters - 1; iterator++) {
               MonstersHealth[currentMonster] = MonstersHealth[currentMonster + 1];
               xPosMonsters[currentMonster] = xPosMonsters[currentMonster + 1];
               yPosMonsters[currentMonster] = yPosMonsters[currentMonster + 1];
             }
           } else {
-            MonstersHealth[currentMonster] = 0;
+            MonstersHealth[currentMonster] = 0;                                                           // if is the last monster then I update his status to 0;
             xPosMonsters[currentMonster] = 0;
             yPosMonsters[currentMonster] = 0;
           }
@@ -312,13 +310,13 @@ public:
           updateLcd = true;
           matrixChanged = true;
         } else {
-          MonstersHealth[currentMonster] = MonstersHealth[currentMonster] - damageReceived;
+          MonstersHealth[currentMonster] = MonstersHealth[currentMonster] - damageReceived;               // if remaining hp is more than 0, then update his health into array.
         }
       }
     }
   }
 
-  void updateMonstersPosition(byte xPosMonsters, byte yPosMonsters, byte currentMonster) {
+  void updateMonstersPosition(byte xPosMonsters, byte yPosMonsters, byte currentMonster) {                 // This is used in monsterAI, to make the monster move to the player in a clean way.
     outputMatrix[this->xPosMonsters[currentMonster]][this->yPosMonsters[currentMonster]] = 0;
     this->xPosMonsters[currentMonster] = xPosMonsters;
     this->yPosMonsters[currentMonster] = yPosMonsters;
@@ -326,13 +324,13 @@ public:
     matrixChanged = true;
   }
 
-  void boostMonsterStatus() {
-    health = health + 1;
+  void boostMonsterStatus() {                                                                             // increase difficulty = increase status for monsters
+    health = health + 1;                                                                                  // also as crazy as it sounds, -300 speed is a buff, because speed here means interval after the monster can move
     speed = speed - 300;
     damage = damage + 1;
   }
 
-  void reset() {
+  void reset() {                                                                                          // the name of the method tells everything
     health = 5;
     speed = 3000;
     damage = 5;
@@ -421,7 +419,7 @@ public:
     this->lastPositionY = this->positionY;
   }
 
-  bool checkInRange(byte option, byte numberOfOptions) {
+  bool checkInRange(byte option, byte numberOfOptions) {                                                // check if the option is in range of 0, numberOfOptions
     if (option < 0 || option >= numberOfOptions) {
       return false;
     } else {
@@ -429,8 +427,8 @@ public:
     }
   }
 
-  byte moveLeftRight(byte option, byte numberOfOptions) {
-    int xValue = analogRead(xPin);
+  byte moveLeftRight(byte option, byte numberOfOptions) {                                               //read joystick on X axis, and change the option depending on the joystick movement
+    int xValue = analogRead(xPin);                                                                      // method first used for menu, to change what option it shows
     if (xValue < minThreshold && joystickMovedLeftRight == false) {
       if (checkInRange(option - 1, numberOfOptions) == true) {
         option--;
@@ -451,7 +449,7 @@ public:
   }
 
 
-  byte moveUpDown(byte option, byte numberOfOptions) {
+  byte moveUpDown(byte option, byte numberOfOptions) {                                                      //same thing but for Y axis
     int yValue = analogRead(yPin);
     if (yValue < minThreshold && joystickMovedUpDown == false) {
       if (checkInRange(option - 1, numberOfOptions) == true) {
@@ -471,8 +469,8 @@ public:
     return option;
   }
 
-  void savePlayerName() {
-    cursorPosition = moveLeftRight(cursorPosition, maxNameLength);
+  void savePlayerName() {                                                                       //it shows a screen where the player, after achieved a highscore, can change letters and position of cursor by moving the joystick
+    cursorPosition = moveLeftRight(cursorPosition, maxNameLength);                              // after entering the name and saving it, it continues with reset and return to the interactive menu
     letter[cursorPosition] = moveUpDown(letter[cursorPosition], numberOfCharacters);
     if (updateLcd == true) {
       lcd.setCursor(lastCursorPosition, 1);
@@ -517,7 +515,7 @@ public:
   void setInSaveName(bool inSaveName) {
     this->inSaveName = inSaveName;
   }
-  void updatePlayerPosition() {
+  void updatePlayerPosition() {                                         //basically just move the player depending on the joystick movement. It also checks for obstacles and stops movement if it hit 1.
     //Read Joystick values left-right up-down
     int xValue = analogRead(xPin);
     int yValue = analogRead(yPin);
@@ -570,13 +568,13 @@ public:
     }
   }
 
-  void managePlayerHealth(byte damageReceived) {
+  void managePlayerHealth(byte damageReceived) {                    //if the hp of the player is 0, the game is over.
     if ((health - damageReceived) <= 0) {
       gameOver = true;
       updateLcd = true;
       health = 0;
     } else {
-      health = health - damageReceived;
+      health = health - damageReceived;                             //if the hp is still > 0, after being hit, update the health of the player.
     }
   }
 
@@ -605,13 +603,13 @@ protected:
   byte damage;
   unsigned long lastAnimation = 0;
   bool monsterHit = false;
-  byte range;
+  byte range;                                             //range of the weapon, at least for the pistol, is the number cycles a bullet will do if it doesn't hit something
   byte currentCycle;
 public:
   Weapons(byte id, byte damage, byte range) {
     this->id = id;
     this->damage = damage;
-    this->range = range;
+    this->range = range;                                  // currentcycle have to be > than range to not enter in the loop
     this->currentCycle = range + 1;
   }
   byte getId() const {
@@ -639,7 +637,7 @@ public:
     bulletAnimation();
   }
 
-  void CheckToShoot() {
+  void CheckToShoot() {                             //check if the player pressed the button, if yes, currentcycle = 0 and will enter in the bullet animation loop
     if (pressedButton[ok] == true) {
       xPosBullet = player.getPositionX();
       yPosBullet = player.getPositionY();
@@ -649,17 +647,17 @@ public:
     }
   }
 
-  void bulletAnimation() {
+  void bulletAnimation() {                                                            
     if (millis() - lastAnimation >= bulletSpeed && monsterHit == false) {
       if (currentCycle < range) {
-        updateBulletPosition();
+        updateBulletPosition();                                                                          //method used to move the bullet
         lastAnimation = millis();
       } else if (currentCycle == range) {
         clearBullet();
         matrixChanged = true;
-        currentCycle++;
+        currentCycle++;                                                                                 //stops the loop
       } else if (currentCycle > range) {
-        for (int currentDirection = 0; currentDirection < numberOfDirections; currentDirection++) {
+        for (int currentDirection = 0; currentDirection < numberOfDirections; currentDirection++) {     //check for the direction of the player when it is out of loop, and updates the direction of the bullet
           if (direction[currentDirection] == 1) {
             currentDirectionBullet = currentDirection;
           }
@@ -680,11 +678,11 @@ public:
     switch (currentDirectionBullet) {
       case 0:
         if (monsterHit == false) {
-          if (checkObject(xPosBullet, yPosBullet - 1, monster.getId()) == false && checkObject(xPosBullet, yPosBullet - 1, wall) == false) {
+          if (checkObject(xPosBullet, yPosBullet - 1, monster.getId()) == false && checkObject(xPosBullet, yPosBullet - 1, wall) == false) {        //checks if it hits an object, if not, the bullet moves
             yPosBullet--;
-          } else if (checkObject(xPosBullet, yPosBullet - 1, monster.getId()) == true) {
+          } else if (checkObject(xPosBullet, yPosBullet - 1, monster.getId()) == true) {                                                            // if hits a monster, call the method to update his hp
             monster.ManageMonsterHealth(xPosBullet, yPosBullet - 1, damage);
-            monsterHit = true;
+            monsterHit = true;                                                                                                                      //this stops the bullet animation
           }
         }
         break;
@@ -722,7 +720,7 @@ public:
         break;
     }
     if (currentCycle != 1) {
-      if ((xPosBullet != xLastPosBullet || yPosBullet != yLastPosBullet) && monsterHit == false) {
+      if ((xPosBullet != xLastPosBullet || yPosBullet != yLastPosBullet) && monsterHit == false) {          //update the bullet position on matrix
         matrixChanged = true;
         outputMatrix[xLastPosBullet][yLastPosBullet] = nothing;
         outputMatrix[xPosBullet][yPosBullet] = bullet;
@@ -731,7 +729,7 @@ public:
         outputMatrix[xLastPosBullet][yLastPosBullet] = nothing;
       }
     } else {
-      if ((xPosBullet != xLastPosBullet || yPosBullet != yLastPosBullet) && monsterHit == false) {
+      if ((xPosBullet != xLastPosBullet || yPosBullet != yLastPosBullet) && monsterHit == false) {          // this was put because in first stage of animation the last position of the bullet is the player position
         matrixChanged = true;
         outputMatrix[xPosBullet][yPosBullet] = bullet;
       } else if (monsterHit == true) {
@@ -746,7 +744,7 @@ Pistol pistol = Pistol(3, 2, 3);
 class GameDifficulty {
   byte difficulty = 1;
   bool updateLvl = true;
-  unsigned int increaseDifficultyDelay = 1000 * 60 * 1;
+  unsigned int increaseDifficultyDelay = 1000 * 60 * 1;       // 1 minute
   unsigned long lastDifficultyIncrease = 0;
   byte maxDifficulty = 7;
 
@@ -762,17 +760,17 @@ public:
   }
   void updateTheLvl() {
     if (updateLvl == true) {
-      if (difficulty == 1) {
-        outputMatrix[player.getPositionX()][player.getPositionY()] = player.getId();
+      if (difficulty == 1) {                                                                    //is set to 1 only when begin a new game
+        outputMatrix[player.getPositionX()][player.getPositionY()] = player.getId();            //put the id of the player on array of the map
       }
       if (difficulty > 1) {
         monster.boostMonsterStatus();
       }
-      monster.spawnMonsters(monster.getNumberOfMonsters(), difficulty * 2);
-      monster.setScoreValue(difficulty * 10);
+      monster.spawnMonsters(monster.getNumberOfMonsters(), difficulty * 2);                     //spawn monsters when difficulty increase
+      monster.setScoreValue(difficulty * 10);                                                   //also increase their value
       // Serial.println(monster.getNumberOfMonsters());
       updateLcd = true;
-      lastDifficultyIncrease = millis();
+      lastDifficultyIncrease = millis();                                                        //reset the timer for difficulty increase
       matrixChanged = true;
       updateLvl = false;
     }
@@ -780,15 +778,15 @@ public:
 
   void finishLvl() {
     if (difficulty < maxDifficulty) {
-      if ((monster.getNumberOfMonsters() == 0) || (millis() - lastDifficultyIncrease >= increaseDifficultyDelay)) {
-        setGameDifficulty(difficulty + 1);
+      if ((monster.getNumberOfMonsters() == 0) || (millis() - lastDifficultyIncrease >= increaseDifficultyDelay)) {     //checks if all monsters on the actual lvl are dead or the timer reached 1 minute
+        setGameDifficulty(difficulty + 1);                                                                              //increase the difficulty (it doesn't spawn monsters till next loop)
         updateLcd = true;
       }
     }
   }
 
   void finishGame() {
-    if (difficulty == maxDifficulty + 1 && monster.getNumberOfMonsters() == 0) {
+    if (difficulty == maxDifficulty + 1 && monster.getNumberOfMonsters() == 0) {        //if difficulty is set to 8 and are 0 monsters (from the previous lvl, 7) then the player won.
       gameFinished = true;
     }
   }
@@ -805,20 +803,20 @@ class Game {
 
 
   void playerGotHit() {
-    player.managePlayerHealth(monster.getMonsterDamage());
+    player.managePlayerHealth(monster.getMonsterDamage()); //call the method from player class that update the player's health
     updateLcd = true;
   }
 public:
-  void resetGame() {
-    if (pressedButton[ok] == true) {
+  void resetGame() {                                      
+    if (pressedButton[ok] == true) {                        //you need to press button to reset the game after victory/defeat
       if (newHighscore == true) {
         player.setInSaveName(true);
         newHighscore = false;
       }
       if (player.getInSaveName() == false) {
-        player.reset();
+        player.reset();                                     // here resets the score too
       }
-      monster.reset();
+      monster.reset();                                      //resets the members of player and monster classes, also switch to menu
       gameDifficulty.setGameDifficulty(1);
       inGame = false;
       inMenu = true;
@@ -836,7 +834,7 @@ public:
     }
   }
 
-  void checkHighscore() {
+  void checkHighscore() {                                         //check if the actual score is a highscore
     if (newHighscore == false) {
       for (byte iterator = 0; iterator < numberOfHighscores; iterator++) {
         if (score > highscores[iterator]) {
@@ -861,7 +859,7 @@ public:
     }
   }
 
-  void startGame() {
+  void startGame() {                                                          //the control center of the game
     if (gameFinished == false && gameOver == false) {
       gameDifficulty.updateTheLvl();
       gameDifficulty.finishLvl();
@@ -877,7 +875,7 @@ public:
       checkGameOverOrFinished();
     } else if (gameFinished == true) {
       printWinMessage();
-      if ((millis() - lastTimePrinted >= delayHighscore) && (millis() - lastTimePrinted <= delayReset)) {
+      if ((millis() - lastTimePrinted >= delayHighscore) && (millis() - lastTimePrinted <= delayReset)) {     //we have a little delay of 10 seconds after victory of defeat, so highscore message can be seen
         checkHighscore();
       }
       if (millis() - lastTimePrinted >= delayReset) {
@@ -935,7 +933,7 @@ public:
     }
   }
 
-  void printGameInfo() {
+  void printGameInfo() {                      //this is what the lcd screen shows while playing the game
     if (updateLcd == true) {
       lcd.clear();
       lcd.setCursor(0, 0);
@@ -954,7 +952,7 @@ public:
     }
   }
 
-  void monsterAI() {
+  void monsterAI() {                                                                                                      // not even a pathfinder :(
     if (millis() - monsterLastMoved >= monster.getSpeed()) {
       for (int currentMonster = 0; currentMonster < monster.getNumberOfMonsters(); currentMonster++) {
         bool left = false;
@@ -962,9 +960,9 @@ public:
         bool right = false;
         bool down = false;
 
-        if (abs(player.getPositionX() - monster.getMonsterPositionX(currentMonster)) > abs(player.getPositionY() - monster.getMonsterPositionY(currentMonster))) {
-          if (player.getPositionX() < monster.getMonsterPositionX(currentMonster)) {
-            up = true;
+        if (abs(player.getPositionX() - monster.getMonsterPositionX(currentMonster)) > abs(player.getPositionY() - monster.getMonsterPositionY(currentMonster))) {        //at least I learned something from all these A* tutorials
+          if (player.getPositionX() < monster.getMonsterPositionX(currentMonster)) {                                                                                      //decides if to move on X or Y axis depending on the distance 
+            up = true;                                                                                                                                                    //difference between player and monster
           } else if (player.getPositionX() > monster.getMonsterPositionX(currentMonster)) {
             down = true;
           }
@@ -976,12 +974,12 @@ public:
           }
         }
 
-        if (left == true) {
-          if (checkObject(monster.getMonsterPositionX(currentMonster), monster.getMonsterPositionY(currentMonster) - 1, wall) == false) {
+        if (left == true) {                                                                                                                                             //here is the monster movement, if the next position monster moves, is hold
+          if (checkObject(monster.getMonsterPositionX(currentMonster), monster.getMonsterPositionY(currentMonster) - 1, wall) == false) {                               //by the player, then monster gets angry and hits the player.
             if (checkObject(monster.getMonsterPositionX(currentMonster), monster.getMonsterPositionY(currentMonster) - 1, player.getId()) == false) {
               monster.updateMonstersPosition(monster.getMonsterPositionX(currentMonster), monster.getMonsterPositionY(currentMonster) - 1, currentMonster);
             } else {
-              playerGotHit();
+              playerGotHit();                                                                                                                                           //calls the method that updates player hp.
             }
           }
         } else if (up == true) {
@@ -1038,7 +1036,7 @@ public:
   Menu() {
   }
 
-  bool checkInRange(byte option, byte numberOfOptions) {
+  bool checkInRange(byte option, byte numberOfOptions) {                        //same thing from the player class, I took it from here
     if (option <= 0 || option > numberOfOptions) {
       return false;
     } else {
@@ -1551,7 +1549,7 @@ public:
     }
   }
 
-  void interactiveMenu() {
+  void interactiveMenu() {        //this is my interactive menu that just calls methods depending on the flags I set and options.
     CheckMenuRestarted();
     if (optionMainMenu != 0 && optionSettings == 0 && optionHighscores == 0 && optionAbout == 0 && optionHowToPlay == 0) {
       optionMainMenu = moveUpDown(optionMainMenu, numberOfOptionsMain);
@@ -1604,7 +1602,7 @@ Menu menu = Menu();
 
 //FUNCTIONS #############################################################################################################################
 
-bool checkObject(byte positionX, byte postionY, byte objectToCheck) {
+bool checkObject(byte positionX, byte postionY, byte objectToCheck) {                                 //used almost everywhere in the game checks for an "id" on the parsed coordinates.
   if (outputMatrix[positionX][postionY] == objectToCheck) {
     return true;
   } else {
@@ -1613,7 +1611,7 @@ bool checkObject(byte positionX, byte postionY, byte objectToCheck) {
 }
 
 
-void checkDirection(byte directionToCheck) {
+void checkDirection(byte directionToCheck) {                                                            //checks the direction the player moves, used for the bullet animation
   for (int currentDirection = 0; currentDirection < numberOfDirections; currentDirection++) {
     if (currentDirection == directionToCheck) {
       direction[currentDirection] = true;
@@ -1632,8 +1630,8 @@ void mapDisplay() {
   }
 }
 
-void makeFovMatrix() {
-  for (int row = player.getPositionX() - 4; row < player.getPositionX() + 4; row++) {
+void makeFovMatrix() {                                                                                                //copy the big matrix into small matrix, with the player as it's center. If the row or col of bigger matrix 
+  for (int row = player.getPositionX() - 4; row < player.getPositionX() + 4; row++) {                                 //gets out of range (example < 0) then fill that row with 0;
     for (int col = player.getPositionY() - 4; col < player.getPositionY() + 4; col++) {
       if (row >= 0 && row < mapSize && col >= 0 && col < mapSize) {
         fovMatrix[row + 4 - player.getPositionX()][col + 4 - player.getPositionY()] = outputMatrix[row][col];
@@ -1645,8 +1643,8 @@ void makeFovMatrix() {
 }
 
 void updateMatrix() {
-  for (int row = 0; row < matrixSize; row++) {
-    for (int col = 0; col < matrixSize; col++) {
+  for (int row = 0; row < matrixSize; row++) {                                                                      //update the matrix using blinked member of these 2 classes, (basically it changes every time
+    for (int col = 0; col < matrixSize; col++) {                                                                    // from false to true and true to false at a set rate, that I named blink rate (blinkRate).
       if (fovMatrix[row][col] == player.getId()) {
         ledStateMatrix(row, col, player.getBlinkStatus());
       } else if (fovMatrix[row][col] == monster.getId()) {
@@ -1658,11 +1656,11 @@ void updateMatrix() {
   }
 }
 
-void ledStateMatrix(int row, int col, byte ledState) {
+void ledStateMatrix(int row, int col, byte ledState) {                            //I have BS
   lc.setLed(displayLed, col, row, ledState);  // set each led individually
 }
 
-void iWantOrderInTheHighscores() {
+void iWantOrderInTheHighscores() {                                                        //sort my highscores and names using the scores
   for (byte iterator = 0; iterator < numberOfHighscores - 1; iterator++) {
     if (highscores[iterator] < highscores[iterator + 1]) {
       byte temp = highscores[iterator];
@@ -1676,7 +1674,7 @@ void iWantOrderInTheHighscores() {
   }
 }
 
-void debounce() {
+void debounce() {                                                                       //the classic debounce, but for 2 buttons using arrays
   for (int currentButton = 0; currentButton < numberOfButtons; currentButton++) {
     reading[currentButton] = digitalRead(button[currentButton]);
     if (reading[currentButton] != lastReading[currentButton]) {
