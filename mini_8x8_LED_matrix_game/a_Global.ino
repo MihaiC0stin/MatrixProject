@@ -336,15 +336,15 @@ public:
     health = 5;
     speed = 3000;
     damage = 5;
-      for (byte currentMonster = 0; currentMonster < maxNumberOfMonsters; currentMonster++) {
-        outputMatrix[xPosMonsters[currentMonster]][yPosMonsters[currentMonster]] = 0;
-        MonstersHealth[currentMonster] = 0;
-        xPosMonsters[currentMonster] = 0;
-        yPosMonsters[currentMonster] = 0;
-      }
-      numberOfMonsters = 0;
-      blinked = false;
+    for (byte currentMonster = 0; currentMonster < maxNumberOfMonsters; currentMonster++) {
+      outputMatrix[xPosMonsters[currentMonster]][yPosMonsters[currentMonster]] = 0;
+      MonstersHealth[currentMonster] = 0;
+      xPosMonsters[currentMonster] = 0;
+      yPosMonsters[currentMonster] = 0;
     }
+    numberOfMonsters = 0;
+    blinked = false;
+  }
 
   void setScoreValue(byte scoreValue) {
     this->scoreValue = scoreValue;
@@ -1315,11 +1315,11 @@ public:
   }
 
   void toggleSound() {
-    if (pressedButton[ok]) {
+    printSoundStatus();
+    if (pressedButton[ok] == true) {
       sound = !sound;
       updateLcd = true;
       EEPROM.put(eepromAdressSoundStatus, sound);
-      printSoundStatus();
       pressedButton[ok] = false;
     }
     if (pressedButton[back] == true) {
