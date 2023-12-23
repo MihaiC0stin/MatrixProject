@@ -1,6 +1,7 @@
 //LIBRARIES ########################################################################################################################################
 #include "LedControl.h"  // Include LedControl library for controlling the LED matrix
 #include <LiquidCrystal.h>
+#include <EEPROM.h>
 
 //CONSTANT VARIABLES ###############################################################################################################################
 //microcontroller pins
@@ -12,7 +13,7 @@ const byte xPin = A0;
 const byte yPin = A1;
 //joystick threshold
 const int minThreshold = 200;
-const int maxThreshold = 700;
+const int maxThreshold = 800;
 //matrix sizes
 const byte matrixSize = 8;  // Size of the LED matrix
 const byte mapSize = 16;
@@ -49,7 +50,119 @@ const int maxLcdBrightness = 255;
 const byte numberOfCharacters = 53;
 const byte maxNameLength = 10;
 const byte numberOfHighscores = 5;
+
+const byte eepromAdressMatrixBrightness = 10;
+const byte eepromAdressLcdBrightness = 20;
+const byte eepromAdressSoundStatus = 30;
+
+
+byte matrixStickmanMove[matrixSize] = {
+  B00011000,
+  B00111100,
+  B00011000,
+  B00011111,
+  B00011000,
+  B00011000,
+  B00100100,
+  B01000010
+};
+byte matrixStickmanStay[matrixSize] = {
+  B00011000,
+  B00111100,
+  B00011000,
+  B00011111,
+  B00011000,
+  B00011000,
+  B00011000,
+  B00011000
+};
+byte lcdStickmanMove[matrixSize] = {
+  B00100,
+  B01110,
+  B00100,
+  B00111,
+  B00100,
+  B00100,
+  B01010,
+  B10001
+};
+byte lcdStickmanStay[matrixSize] = {
+  B00100,
+  B01110,
+  B00100,
+  B00111,
+  B00100,
+  B00100,
+  B00100,
+  B00100
+};
+
+byte playAnimation[matrixSize] = {
+  B00100000,
+  B00110000,
+  B00111000,
+  B00111100,
+  B00111000,
+  B00110000,
+  B00100000,
+  B00000000
+};
+byte settingsAnimation[matrixSize] = {
+  B00000000,
+  B10010010,
+  B01010100,
+  B00111000,
+  B11101110,
+  B00111000,
+  B01010100,
+  B10010010
+};
+byte highscoresAnimation[matrixSize] = {
+  B01111100,
+  B01111100,
+  B01111100,
+  B00111000,
+  B00010000,
+  B00010000,
+  B00111000,
+  B01111100
+};
+byte highscoresAnimationLcd[matrixSize] = {
+  B11111,
+  B11111,
+  B11111,
+  B01110,
+  B00100,
+  B00100,
+  B01110,
+  B11111
+};
+byte aboutAnimation[matrixSize] = {
+  B00000000,
+  B00010000,
+  B00000000,
+  B00010000,
+  B00010000,
+  B00010000,
+  B00010000,
+  B00010000
+};
+byte howToPlayAnimation[matrixSize] = {
+  B00111000,
+  B01000100,
+  B00000100,
+  B00001000,
+  B00010000,
+  B00010000,
+  B00000000,
+  B00010000
+};
+
+int startupAnimationDelay = 250;
+byte positionAnimationX = 0;
+byte positionAnimationY = 0;
 //VARIABLES #########################################################################################################################################
+unsigned long lastStartupAnimationTime = 0;
 byte matrixBrightness = 2;
 int lcdBrightness = 180;
 bool sound = true;
@@ -96,6 +209,9 @@ int highscores[numberOfHighscores];
 char highscoresNames[numberOfHighscores][maxNameLength + 1];
 
 bool gameReseted = false;
+bool updateLcd = true;
+bool newHighscore = false;
+bool highscoreChecked = false;
 
 
 //LIBRARY OBJECTS ##################################################################################################################################
@@ -108,18 +224,16 @@ void checkDirection(byte);
 //CLASSES ######################################################################################################################################
 class GameEntity {
 protected:
-  byte id = 0;
-  byte health = 0;
-  unsigned long lastBlink;
+  byte id;
+  byte health;
+  unsigned long lastBlink = 0;
   int blinkRate;
-  bool blinked;
+  bool blinked = true;
 public:
   GameEntity(byte id, byte health, int blinkRate) {
     this->id = id;
     this->health = health;
     this->blinkRate = blinkRate;
-    this->lastBlink = 0;
-    bool blinked = true;
   };
 
   void setId(byte id) {
@@ -153,20 +267,19 @@ class Monster : public GameEntity {
   byte MonstersHealth[maxNumberOfMonsters];
   byte xPosMonsters[maxNumberOfMonsters];
   byte yPosMonsters[maxNumberOfMonsters];
-  int speed = 0;
+  int speed = 3000;
   byte numberOfMonsters = 0;
   byte scoreValue = 0;
   byte moneyValue = 0;
 
 public:
-  Monster(byte id, byte health, int blinkRate, int speed)
+  Monster(byte id, byte health, int blinkRate)
     : GameEntity(id, health, blinkRate) {
-    this->speed = speed;
   }
 
   void spawnMonsters(byte iteratorStart, byte numberOfMonsters) {
     this->numberOfMonsters = this->numberOfMonsters + numberOfMonsters;
-    for (byte currentMonster = iteratorStart; currentMonster < numberOfMonsters; currentMonster++) {
+    for (int currentMonster = iteratorStart; currentMonster < numberOfMonsters; currentMonster++) {
       MonstersHealth[currentMonster] = health;
       xPosMonsters[currentMonster] = random(0, mapSize);
       yPosMonsters[currentMonster] = random(0, mapSize);
@@ -185,16 +298,19 @@ public:
           outputMatrix[xPosMonsters[currentMonster]][yPosMonsters[currentMonster]] = 0;
           score = score + scoreValue;
           if (currentMonster != numberOfMonsters - 1) {
-            for (byte iterator = currentMonster; iterator < numberOfMonsters - 1; iterator++)
+            for (byte iterator = currentMonster; iterator < numberOfMonsters - 1; iterator++) {
               MonstersHealth[currentMonster] = MonstersHealth[currentMonster + 1];
-            xPosMonsters[currentMonster] = xPosMonsters[currentMonster + 1];
-            yPosMonsters[currentMonster] = yPosMonsters[currentMonster + 1];
+              xPosMonsters[currentMonster] = xPosMonsters[currentMonster + 1];
+              yPosMonsters[currentMonster] = yPosMonsters[currentMonster + 1];
+            }
           } else {
             MonstersHealth[currentMonster] = 0;
             xPosMonsters[currentMonster] = 0;
             yPosMonsters[currentMonster] = 0;
           }
           numberOfMonsters--;
+          updateLcd = true;
+          matrixChanged = true;
         } else {
           MonstersHealth[currentMonster] = MonstersHealth[currentMonster] - damageReceived;
         }
@@ -220,8 +336,7 @@ public:
     health = 5;
     speed = 3000;
     damage = 5;
-    if (numberOfMonsters != 0) {
-      for (byte currentMonster = 0; currentMonster < numberOfMonsters; currentMonster++) {
+      for (byte currentMonster = 0; currentMonster < maxNumberOfMonsters; currentMonster++) {
         outputMatrix[xPosMonsters[currentMonster]][yPosMonsters[currentMonster]] = 0;
         MonstersHealth[currentMonster] = 0;
         xPosMonsters[currentMonster] = 0;
@@ -230,7 +345,6 @@ public:
       numberOfMonsters = 0;
       blinked = false;
     }
-  }
 
   void setScoreValue(byte scoreValue) {
     this->scoreValue = scoreValue;
@@ -269,37 +383,32 @@ public:
   }
 };
 
-Monster monster = Monster(6, 5, 200, 3000);
+Monster monster = Monster(6, 5, 50);
 
 
 class Player : public GameEntity {
-  char name[maxNameLength + 1] = "Player";
+  char name[maxNameLength + 1];
   char nameCharacters[numberOfCharacters] = { ' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
                                               'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z' };
-  byte cursorPosition = 0;
-  byte lastCursorPosition = 0;
   byte letter[maxNameLength];
-  byte positionX;
-  byte positionY;
-  byte lastPositionX;
-  byte lastPositionY;
+  byte positionX = 6;
+  byte positionY = 6;
+  byte lastPositionX = 6;
+  byte lastPositionY = 6;
   unsigned long lastMoved = 0;
-  int speed;
+  int speed = 200;
   bool joystickMovedLeftRight = false;
   bool joystickMovedUpDown = false;
-  bool updateLCD = true;
   bool inSaveName = false;
-
-
+  byte cursorPosition = 0;
+  byte lastCursorPosition = 0;
 
 public:
-  Player(byte id, byte health, int blinkrate, byte positionX, byte positionY, byte lastPositionX, byte lastPositionY, int speed)
+  Player(byte id, byte health, int blinkrate)
     : GameEntity(id, health, blinkrate) {
-    this->positionX = positionX;
-    this->positionY = positionY;
-    this->lastPositionX = lastPositionX;
-    this->lastPositionY = lastPositionY;
-    this->speed = speed;
+    for (byte iterator; iterator < maxNameLength; iterator++) {
+      letter[iterator] = 0;
+    }
   }
 
   void setPosition(byte positionX, byte positionY) {
@@ -307,9 +416,6 @@ public:
     this->positionY = positionY;
   }
 
-  void SetUpdateLcd(bool updateLCD) {
-    this->updateLCD = updateLCD;
-  }
   void updateLastPosition() {
     this->lastPositionX = this->positionX;
     this->lastPositionY = this->positionY;
@@ -329,13 +435,13 @@ public:
       if (checkInRange(option - 1, numberOfOptions) == true) {
         option--;
         joystickMovedLeftRight = true;
-        updateLCD = true;
+        updateLcd = true;
       }
     } else if (xValue > maxThreshold && joystickMovedLeftRight == false) {
       if (checkInRange(option + 1, numberOfOptions) == true) {
         option++;
         joystickMovedLeftRight = true;
-        updateLCD = true;
+        updateLcd = true;
       }
     } else if (xValue >= minThreshold && xValue <= maxThreshold) {
       joystickMovedLeftRight = false;
@@ -351,13 +457,13 @@ public:
       if (checkInRange(option - 1, numberOfOptions) == true) {
         option--;
         joystickMovedUpDown = true;
-        updateLCD = true;
+        updateLcd = true;
       }
     } else if (yValue > maxThreshold && joystickMovedUpDown == false) {
       if (checkInRange(option + 1, numberOfOptions) == true) {
         option++;
         joystickMovedUpDown = true;
-        updateLCD = true;
+        updateLcd = true;
       }
     } else if (yValue >= minThreshold && yValue <= maxThreshold) {
       joystickMovedUpDown = false;
@@ -368,25 +474,26 @@ public:
   void savePlayerName() {
     cursorPosition = moveLeftRight(cursorPosition, maxNameLength);
     letter[cursorPosition] = moveUpDown(letter[cursorPosition], numberOfCharacters);
-    if (updateLCD == true) {
+    if (updateLcd == true) {
       lcd.setCursor(lastCursorPosition, 1);
-      lcd.print(" ");
+      lcd.print(F(" "));
       lcd.setCursor(cursorPosition, 0);
       lastCursorPosition = cursorPosition;
       lcd.print(nameCharacters[letter[cursorPosition]]);
       lcd.setCursor(cursorPosition, 1);
-      lcd.print("^");
-      updateLCD = false;
+      lcd.print(F("^"));
+      updateLcd = false;
     }
     if (pressedButton[ok] == true) {
       for (byte iterator = 0; iterator < maxNameLength; iterator++) {
         name[iterator] = nameCharacters[letter[iterator]];
       }
-
       strcpy(highscoresNames[numberOfHighscores - 1], name);
+      highscores[numberOfHighscores - 1] = score;
       inSaveName = false;
       inMenu = true;
       inGame = false;
+      updateLcd = true;
       reset();
       pressedButton[ok] = false;
     }
@@ -466,6 +573,7 @@ public:
   void managePlayerHealth(byte damageReceived) {
     if ((health - damageReceived) <= 0) {
       gameOver = true;
+      updateLcd = true;
       health = 0;
     } else {
       health = health - damageReceived;
@@ -475,17 +583,21 @@ public:
   void reset() {
     outputMatrix[positionX][positionY] = 0;
     blinked = false;
-    updateMatrix();
-    name[maxNameLength + 1] = "Player";
     health = 20;
-    positionX = 5;
-    positionY = 5;
-    lastPositionX = 5;
-    lastPositionY = 5;
+    positionX = 6;
+    positionY = 6;
+    lastPositionX = 6;
+    lastPositionY = 6;
+    score = 0;
+    cursorPosition = 0;
+    lastCursorPosition = 0;
+    for (byte iterator = 0; iterator < maxNameLength; iterator++) {
+      letter[iterator] = 0;
+    }
   }
 };
 
-Player player = Player(2, 20, 400, 5, 5, 5, 5, 200);
+Player player = Player(2, 20, 400);
 
 class Weapons {
 protected:
@@ -493,8 +605,8 @@ protected:
   byte damage;
   unsigned long lastAnimation = 0;
   bool monsterHit = false;
-  byte range = 0;
-  byte currentCycle = 0;
+  byte range;
+  byte currentCycle;
 public:
   Weapons(byte id, byte damage, byte range) {
     this->id = id;
@@ -516,11 +628,10 @@ class Pistol : public Weapons {
   byte xLastPosBullet = 0;
   byte yLastPosBullet = 0;
   byte currentDirectionBullet = 0;
-  byte bulletSpeed;
+  byte bulletSpeed = 50;
 public:
-  Pistol(byte id, byte damage, byte range, byte bulletSpeed)
+  Pistol(byte id, byte damage, byte range)
     : Weapons(id, damage, range) {
-    this->bulletSpeed = bulletSpeed;
   }
 
   void shoot() {
@@ -630,7 +741,7 @@ public:
   }
 };
 
-Pistol pistol = Pistol(3, 2, 3, 50);
+Pistol pistol = Pistol(3, 2, 3);
 
 class GameDifficulty {
   byte difficulty = 1;
@@ -640,24 +751,28 @@ class GameDifficulty {
   byte maxDifficulty = 7;
 
 public:
-  GameDifficulty(byte difficulty) {
-    this->difficulty = difficulty;
+  GameDifficulty() {
   }
   void setGameDifficulty(byte difficulty) {
     this->difficulty = difficulty;
     updateLvl = true;
+  }
+  byte getGameDifficulty() {
+    return difficulty;
   }
   void updateTheLvl() {
     if (updateLvl == true) {
       if (difficulty == 1) {
         outputMatrix[player.getPositionX()][player.getPositionY()] = player.getId();
       }
-      monster.spawnMonsters(monster.getNumberOfMonsters(), difficulty * 2);
-      monster.setScoreValue(difficulty * 10);
       if (difficulty > 1) {
         monster.boostMonsterStatus();
       }
-      Serial.println(monster.getNumberOfMonsters());
+      monster.spawnMonsters(monster.getNumberOfMonsters(), difficulty * 2);
+      monster.setScoreValue(difficulty * 10);
+      // Serial.println(monster.getNumberOfMonsters());
+      updateLcd = true;
+      lastDifficultyIncrease = millis();
       matrixChanged = true;
       updateLvl = false;
     }
@@ -667,94 +782,82 @@ public:
     if (difficulty < maxDifficulty) {
       if ((monster.getNumberOfMonsters() == 0) || (millis() - lastDifficultyIncrease >= increaseDifficultyDelay)) {
         setGameDifficulty(difficulty + 1);
-        lastDifficultyIncrease = millis();
+        updateLcd = true;
       }
     }
   }
 
   void finishGame() {
-    if (difficulty == maxDifficulty && monster.getNumberOfMonsters() == 0) {
+    if (difficulty == maxDifficulty + 1 && monster.getNumberOfMonsters() == 0) {
       gameFinished = true;
     }
   }
 };
 
-GameDifficulty gameDifficulty = GameDifficulty(1);
-
-// class Queue {
-//   byte queueArray[maxQueueSize];
-//   int front;
-//   int rear;
-
-// public:
-//   Queue() {
-//     front = -1;
-//     rear = -1;
-//   }
-
-//   bool isFull() {
-//     if (front == 0 && rear == maxQueueSize - 1) {
-//       return true;
-//     }
-//     return false;
-//   }
-//   bool isEmpty() {
-//     if (front == -1) {
-//       return true;
-//     }
-//     return false;
-//   }
-
-//   void addElement(byte value) {
-//     if (isFull() == false) {
-//       if (front == -1) {
-//         front = 0;
-//       }
-//       rear++;
-//       queueArray[rear] = value;
-//     }
-//   }
-
-//   void deleteElement() {
-//     byte value;
-//     if (isEmpty() == false) {
-//       value = queueArray[front];
-//     }
-//   }
-// };
+GameDifficulty gameDifficulty = GameDifficulty();
 
 
 class Game {
-  unsigned long monsterLastMoved;
-  bool updateLcd = true;
+  unsigned long monsterLastMoved = 0;
   unsigned long lastTimePrinted = 0;
-  int victoryMessageDelay = 6000;
+  int delayHighscore = 5000;
+  int delayReset = 10000;
+
 
   void playerGotHit() {
     player.managePlayerHealth(monster.getMonsterDamage());
     updateLcd = true;
   }
 public:
-
   void resetGame() {
     if (pressedButton[ok] == true) {
-      for (byte iterator = 0; iterator < numberOfHighscores; iterator++) {
-        if (score > highscores[iterator]) {
-          player.setInSaveName(true);
-          lcd.clear();
-          player.SetUpdateLcd(true);
-          highscores[numberOfHighscores - 1] = score;
-        }
+      if (newHighscore == true) {
+        player.setInSaveName(true);
+        newHighscore = false;
       }
       if (player.getInSaveName() == false) {
-        score = 0;
         player.reset();
       }
       monster.reset();
       gameDifficulty.setGameDifficulty(1);
       inGame = false;
       inMenu = true;
+      updateLcd = true;
+      lcd.clear();
       pressedButton[ok] = false;
+    }
+  }
+
+  void clearMatrix() {
+    for (int row = 0; row < matrixSize; row++) {
+      for (int col = 0; col < matrixSize; col++) {
+        ledStateMatrix(row, col, 0);
+      }
+    }
+  }
+
+  void checkHighscore() {
+    if (newHighscore == false) {
+      for (byte iterator = 0; iterator < numberOfHighscores; iterator++) {
+        if (score > highscores[iterator]) {
+          newHighscore = true;
+          updateLcd = true;
+        }
+      }
+      printNewHighscore();
+    }
+  }
+
+  void printNewHighscore() {
+    if (updateLcd == true && newHighscore == true) {
+      lcd.clear();
+      lcd.setCursor(1, 0);
+      lcd.print(F("New Highscore"));
+      lcd.setCursor(6, 1);
+      lcd.write(byte(2));
+      lcd.print(score);
+      lcd.write(byte(2));
+      updateLcd = false;
     }
   }
 
@@ -771,20 +874,57 @@ public:
       checkScoreChange();
       printGameInfo();
       gameDifficulty.finishGame();
-    } else if (gameFinished == true && gameOver == false) {
+      checkGameOverOrFinished();
+    } else if (gameFinished == true) {
+      printWinMessage();
+      if ((millis() - lastTimePrinted >= delayHighscore) && (millis() - lastTimePrinted <= delayReset)) {
+        checkHighscore();
+      }
+      if (millis() - lastTimePrinted >= delayReset) {
+        resetGame();
+      }
+    } else if (gameOver == true) {
+      printLoseMessage();
+      if ((millis() - lastTimePrinted >= delayHighscore) && (millis() - lastTimePrinted <= delayReset)) {
+        checkHighscore();
+      }
+      if (millis() - lastTimePrinted >= delayReset) {
+        resetGame();
+      }
+    }
+  }
+
+  void checkGameOverOrFinished() {
+    if (gameOver == true || gameFinished == true) {
+      updateLcd = true;
+    }
+  }
+
+  void printWinMessage() {
+    if (updateLcd == true) {
+      lcd.clear();
       lcd.setCursor(0, 0);
-      lcd.print("Congratulations ");
+      lcd.print(F("Congratulations "));
       lcd.setCursor(0, 1);
-      lcd.print("Your score:");
+      lcd.print(F("Your score:"));
       lcd.print(score);
-      resetGame();
-    } else if (gameFinished == false && gameOver == true) {
+      lastTimePrinted = millis();
+      updateLcd = false;
+      clearMatrix();
+    }
+  }
+
+  void printLoseMessage() {
+    if (updateLcd == true) {
+      lcd.clear();
       lcd.setCursor(0, 0);
-      lcd.print("    You Died     ");
+      lcd.print(F("    You Died     "));
       lcd.setCursor(0, 1);
-      lcd.print("Your score:");
+      lcd.print(F("Your score:"));
       lcd.print(score);
-      resetGame();
+      lastTimePrinted = millis();
+      updateLcd = false;
+      clearMatrix();
     }
   }
 
@@ -799,14 +939,17 @@ public:
     if (updateLcd == true) {
       lcd.clear();
       lcd.setCursor(0, 0);
-      lcd.print("HP:");
+      lcd.print(F("HP:"));
       lcd.print(player.getHealth());
-      lcd.setCursor(8, 0);
-      lcd.print("$ ");
-      lcd.print(money);
-      lcd.setCursor(0, 1);
-      lcd.print("score: ");
+      lcd.setCursor(6, 0);
+      lcd.print(F("Score:"));
       lcd.print(score);
+      lcd.setCursor(0, 1);
+      lcd.print(F("Diff:"));
+      lcd.print(gameDifficulty.getGameDifficulty());
+      lcd.setCursor(7, 1);
+      lcd.print(F("Alive:"));
+      lcd.print(monster.getNumberOfMonsters());
       updateLcd = false;
     }
   }
@@ -879,22 +1022,20 @@ class Menu {
   byte optionSettings = 0;
   byte optionHighscores = 0;
   byte optionAbout = 0;
-  bool joystickMoved = false;
-  bool updateLCD = true;
-  byte numberOfOptionsMain = 4;
+  byte optionHowToPlay = 0;
+  bool joystickMovedLeftRight = false;
+  bool joystickMovedUpDown = false;
+  byte numberOfOptionsMain = 5;
   byte numberOfOptionsSettings = 3;
   byte numberOfOptionsHighscores = 5;
-  byte numberOfOptionsAbout = 2;
+  byte numberOfOptionsAbout = 3;
+  byte numberOfOptionsHowToPlay = 11;
   bool changeMatrixIntensity = false;
   bool changeLcdIntensity = false;
   bool toggleTheSound = false;
 
 public:
-  Menu(byte optionMainMenu, byte optionSettings, byte optionAbout, byte optionHighscores) {
-    this->optionMainMenu = optionMainMenu;
-    this->optionSettings = optionSettings;
-    this->optionAbout = optionAbout;
-    this->optionHighscores = optionHighscores;
+  Menu() {
   }
 
   bool checkInRange(byte option, byte numberOfOptions) {
@@ -907,20 +1048,20 @@ public:
 
   byte moveLeftRight(byte option, byte numberOfOptions) {
     int xValue = analogRead(xPin);
-    if (xValue < minThreshold && joystickMoved == false) {
+    if (xValue < minThreshold && joystickMovedLeftRight == false) {
       if (checkInRange(option - 1, numberOfOptions) == true) {
         option--;
-        joystickMoved = true;
-        updateLCD = true;
+        joystickMovedLeftRight = true;
+        updateLcd = true;
       }
-    } else if (xValue > maxThreshold && joystickMoved == false) {
+    } else if (xValue > maxThreshold && joystickMovedLeftRight == false) {
       if (checkInRange(option + 1, numberOfOptions) == true) {
         option++;
-        joystickMoved = true;
-        updateLCD = true;
+        joystickMovedLeftRight = true;
+        updateLcd = true;
       }
     } else if (xValue >= minThreshold && xValue <= maxThreshold) {
-      joystickMoved = false;
+      joystickMovedLeftRight = false;
     }
     // Serial.println(option);
     return option;
@@ -929,20 +1070,20 @@ public:
 
   byte moveUpDown(byte option, byte numberOfOptions) {
     int yValue = analogRead(yPin);
-    if (yValue < minThreshold && joystickMoved == false) {
+    if (yValue < minThreshold && joystickMovedUpDown == false) {
       if (checkInRange(option - 1, numberOfOptions) == true) {
         option--;
-        joystickMoved = true;
-        updateLCD = true;
+        joystickMovedUpDown = true;
+        updateLcd = true;
       }
-    } else if (yValue > maxThreshold && joystickMoved == false) {
+    } else if (yValue > maxThreshold && joystickMovedUpDown == false) {
       if (checkInRange(option + 1, numberOfOptions) == true) {
         option++;
-        joystickMoved = true;
-        updateLCD = true;
+        joystickMovedUpDown = true;
+        updateLcd = true;
       }
     } else if (yValue >= minThreshold && yValue <= maxThreshold) {
-      joystickMoved = false;
+      joystickMovedUpDown = false;
     }
     // Serial.println(option);
     return option;
@@ -956,6 +1097,10 @@ public:
         lcd.print(F(" > Play Game"));
         lcd.setCursor(0, 1);
         lcd.print(F("   Settings"));
+
+        for (byte row = 0; row < matrixSize; row++) {
+          lc.setColumn(0, row, playAnimation[row]);
+        }
         break;
       case 2:
         lcd.clear();
@@ -963,6 +1108,10 @@ public:
         lcd.print(F("   Play Game"));
         lcd.setCursor(0, 1);
         lcd.print(F(" > Settings"));
+
+        for (byte row = 0; row < matrixSize; row++) {
+          lc.setColumn(0, row, settingsAnimation[row]);
+        }
         break;
       case 3:
         lcd.clear();
@@ -970,6 +1119,10 @@ public:
         lcd.print(F("   Settings"));
         lcd.setCursor(0, 1);
         lcd.print(F(" > Highscores"));
+
+        for (byte row = 0; row < matrixSize; row++) {
+          lc.setColumn(0, row, highscoresAnimation[row]);
+        }
         break;
       case 4:
         lcd.clear();
@@ -977,6 +1130,21 @@ public:
         lcd.print("   Highscores");
         lcd.setCursor(0, 1);
         lcd.print(" > About");
+
+        for (byte row = 0; row < matrixSize; row++) {
+          lc.setColumn(0, row, aboutAnimation[row]);
+        }
+        break;
+      case 5:
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("   About");
+        lcd.setCursor(0, 1);
+        lcd.print(" > How to play");
+
+        for (byte row = 0; row < matrixSize; row++) {
+          lc.setColumn(0, row, howToPlayAnimation[row]);
+        }
         break;
       default:
         break;
@@ -990,13 +1158,14 @@ public:
           lcd.clear();
           inMenu = false;
           inGame = true;
+          updateLcd = true;
           pressedButton[ok] = false;
         }
         break;
       case 2:
         if (pressedButton[ok] == true) {
           optionSettings = 1;
-          updateLCD = true;
+          updateLcd = true;
           pressedButton[ok] = false;
         }
 
@@ -1004,14 +1173,21 @@ public:
       case 3:
         if (pressedButton[ok] == true) {
           optionHighscores = 1;
-          updateLCD = true;
+          updateLcd = true;
           pressedButton[ok] = false;
         }
         break;
       case 4:
         if (pressedButton[ok] == true) {
           optionAbout = 1;
-          updateLCD = true;
+          updateLcd = true;
+          pressedButton[ok] = false;
+        }
+        break;
+      case 5:
+        if (pressedButton[ok] == true) {
+          optionHowToPlay = 1;
+          updateLcd = true;
           pressedButton[ok] = false;
         }
         break;
@@ -1025,23 +1201,23 @@ public:
       case 1:
         lcd.clear();
         lcd.setCursor(0, 0);
-        lcd.print(F(" > Set Matrix Brightness"));
+        lcd.print(F(">Mtrx Brightness"));
         lcd.setCursor(0, 1);
-        lcd.print(F("  Set LCD Brightness"));
+        lcd.print(F(" LCD Brightness"));
         break;
       case 2:
         lcd.clear();
         lcd.setCursor(0, 0);
-        lcd.print(F(" > Set LCD Brightness"));
+        lcd.print(F(">LCD Brightness"));
         lcd.setCursor(0, 1);
-        lcd.print(F("   Toggle sound ON/OFF"));
+        lcd.print(F(" Toggle sound"));
         break;
       case 3:
         lcd.clear();
         lcd.setCursor(0, 0);
-        lcd.print(F("   Set LCD Brightness"));
+        lcd.print(F(" LCD Brightness"));
         lcd.setCursor(0, 1);
-        lcd.print(F(" > Toggle sound ON/OFF"));
+        lcd.print(F(">Toggle sound"));
         break;
       default:
         break;
@@ -1053,33 +1229,36 @@ public:
       case 1:
         if (pressedButton[ok] == true) {
           changeMatrixIntensity = true;
+          updateLcd = true;
           pressedButton[ok] = false;
         }
         if (pressedButton[back] == true) {
           optionSettings = 0;
-          updateLCD = true;
+          updateLcd = true;
           pressedButton[back] = false;
         }
         break;
       case 2:
         if (pressedButton[ok] == true) {
           changeLcdIntensity = true;
+          updateLcd = true;
           pressedButton[ok] = false;
         }
         if (pressedButton[back] == true) {
           optionSettings = 0;
-          updateLCD = true;
+          updateLcd = true;
           pressedButton[back] = false;
         }
         break;
       case 3:
         if (pressedButton[ok] == true) {
           toggleTheSound = true;
+          updateLcd = true;
           pressedButton[ok] = false;
         }
         if (pressedButton[back] == true) {
           optionSettings = 0;
-          updateLCD = true;
+          updateLcd = true;
           pressedButton[back] = false;
         }
         break;
@@ -1091,36 +1270,77 @@ public:
 
   void changeMatrixBrightness() {
     matrixBrightness = moveUpDown(matrixBrightness, maxMatrixBrightness);
+    EEPROM.put(eepromAdressMatrixBrightness, matrixBrightness);
     lc.setIntensity(0, matrixBrightness);
-    Serial.println(matrixBrightness);
+    printMatrixBrightness();
     if (pressedButton[back] == true) {
       changeMatrixIntensity = false;
-      updateLCD = true;
+      updateLcd = true;
       pressedButton[back] = false;
+    }
+  }
+
+  void printMatrixBrightness() {
+    if (updateLcd == true) {
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print(F("Matrix Brightness"));
+      lcd.setCursor(7, 1);
+      lcd.print(matrixBrightness);
+      updateLcd = false;
     }
   }
 
   void changeLcdBrightness() {
     lcdBrightness = 10 * moveUpDown(lcdBrightness / 10, maxLcdBrightness / 10);
+    EEPROM.put(eepromAdressLcdBrightness, lcdBrightness);
     analogWrite(lcdAnode, lcdBrightness);
-    Serial.println(lcdBrightness);
+    printLcdBrightness();
     if (pressedButton[back] == true) {
       changeLcdIntensity = false;
-      updateLCD = true;
+      updateLcd = true;
       pressedButton[back] = false;
+    }
+  }
+
+  void printLcdBrightness() {
+    if (updateLcd == true) {
+      lcd.clear();
+      lcd.setCursor(1, 0);
+      lcd.print(F("LCD Brightness"));
+      lcd.setCursor(7, 1);
+      lcd.print(lcdBrightness);
+      updateLcd = false;
     }
   }
 
   void toggleSound() {
     if (pressedButton[ok]) {
       sound = !sound;
-      Serial.println(sound);
+      updateLcd = true;
+      EEPROM.put(eepromAdressSoundStatus, sound);
+      printSoundStatus();
       pressedButton[ok] = false;
     }
     if (pressedButton[back] == true) {
       toggleTheSound = false;
-      updateLCD = true;
+      updateLcd = true;
       pressedButton[back] = false;
+    }
+  }
+
+  void printSoundStatus() {
+    if (updateLcd == true) {
+      lcd.clear();
+      lcd.setCursor(1, 0);
+      lcd.print(F("Status Sound"));
+      lcd.setCursor(7, 1);
+      if (sound == true) {
+        lcd.print(F("ON"));
+      } else {
+        lcd.print(F("OFF"));
+      }
+      updateLcd = false;
     }
   }
 
@@ -1129,46 +1349,69 @@ public:
       case 1:
         lcd.clear();
         lcd.setCursor(0, 0);
+        lcd.print(optionHighscores);
+        lcd.print(".");
+        lcd.setCursor(3, 0);
         lcd.print(highscoresNames[optionHighscores - 1]);
         lcd.setCursor(0, 1);
-        lcd.print(highscores[optionHighscores - 1]);
+        printHighscore();
         break;
       case 2:
         lcd.clear();
         lcd.setCursor(0, 0);
+        lcd.print(optionHighscores);
+        lcd.print(".");
+        lcd.setCursor(3, 0);
         lcd.print(highscoresNames[optionHighscores - 1]);
         lcd.setCursor(0, 1);
-        lcd.print(highscores[optionHighscores - 1]);
+        printHighscore();
         break;
       case 3:
         lcd.clear();
         lcd.setCursor(0, 0);
+        lcd.print(optionHighscores);
+        lcd.print(".");
+        lcd.setCursor(3, 0);
         lcd.print(highscoresNames[optionHighscores - 1]);
         lcd.setCursor(0, 1);
-        lcd.print(highscores[optionHighscores - 1]);
+        printHighscore();
         break;
       case 4:
         lcd.clear();
         lcd.setCursor(0, 0);
+        lcd.print(optionHighscores);
+        lcd.print(".");
+        lcd.setCursor(3, 0);
         lcd.print(highscoresNames[optionHighscores - 1]);
         lcd.setCursor(0, 1);
-        lcd.print(highscores[optionHighscores - 1]);
+        printHighscore();
         break;
       case 5:
         lcd.clear();
         lcd.setCursor(0, 0);
+        lcd.print(optionHighscores);
+        lcd.print(".");
+        lcd.setCursor(3, 0);
         lcd.print(highscoresNames[optionHighscores - 1]);
         lcd.setCursor(0, 1);
-        lcd.print(highscores[optionHighscores - 1]);
+        printHighscore();
       default:
         break;
+    }
+  }
+
+  void printHighscore() {
+    if (highscores[optionHighscores - 1] == 0) {
+      lcd.print(" ");
+    } else {
+      lcd.print(highscores[optionHighscores - 1]);
     }
   }
 
   void highscoresMenu() {
     if (pressedButton[back] == true) {
       optionHighscores = 0;
-      updateLCD = true;
+      updateLcd = true;
       pressedButton[back] = false;
     }
   }
@@ -1178,16 +1421,23 @@ public:
       case 1:
         lcd.clear();
         lcd.setCursor(0, 0);
-        lcd.print(F("> Game Name: Survive the Night"));
+        lcd.print(F("Game: Survive"));
         lcd.setCursor(0, 1);
-        lcd.print(F("  Github: https://github.com/MihaiC0stin"));
+        lcd.print(F("the Night"));
         break;
       case 2:
         lcd.clear();
         lcd.setCursor(0, 0);
-        lcd.print(F("  Game Name: Survive the Night"));
+        lcd.print(F("Author: Belu"));
         lcd.setCursor(0, 1);
-        lcd.print(F("> Github: https://github.com/MihaiC0stin"));
+        lcd.print(F("Mihai Costin"));
+        break;
+      case 3:
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print(F("Github Username:"));
+        lcd.setCursor(0, 1);
+        lcd.print(F("MihaiC0stin"));
         break;
       default:
         break;
@@ -1197,14 +1447,105 @@ public:
   void aboutMenu() {
     if (pressedButton[back] == true) {
       optionAbout = 0;
-      updateLCD = true;
+      updateLcd = true;
+      pressedButton[back] = false;
+    }
+  }
+
+  void printHowToPlayMenu() {
+    switch (optionHowToPlay) {
+      case 1:
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print(F("Move joystick"));
+        lcd.setCursor(0, 1);
+        lcd.print(F("left, right,"));
+        break;
+      case 2:
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print(F("up, down to move"));
+        lcd.setCursor(0, 1);
+        lcd.print(F("and click the"));
+        break;
+      case 3:
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print(F("'ok' button to"));
+        lcd.setCursor(0, 1);
+        lcd.print(F("attack."));
+        break;
+      case 4:
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print(F("Killing monsters"));
+        lcd.setCursor(0, 1);
+        lcd.print(F("will award you"));
+        break;
+      case 5:
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print(F("score points"));
+        lcd.setCursor(0, 1);
+        lcd.print(F("depending on"));
+        break;
+      case 6:
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print(F("difficulty of"));
+        lcd.setCursor(0, 1);
+        lcd.print(F("the game."));
+        break;
+      case 7:
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print(F("The game has 7"));
+        lcd.setCursor(0, 1);
+        lcd.print(F("difficulty lvls"));
+        break;
+      case 8:
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print(F("that rises,"));
+        lcd.setCursor(0, 1);
+        lcd.print(F("every minute or"));
+        break;
+      case 9:
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print(F("if all monsters"));
+        lcd.setCursor(0, 1);
+        lcd.print(F("on the map are"));
+        break;
+      case 10:
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print(F("dead."));
+        lcd.setCursor(0, 1);
+        lcd.print(F("Avoid to get"));
+        break;
+      case 11:
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print(F("hit and killed"));
+        lcd.setCursor(0, 1);
+        lcd.print(F("by monsters :)"));
+        break;
+      default:
+        break;
+    }
+  }
+
+  void howToPlayMenu() {
+    if (pressedButton[back] == true) {
+      optionHowToPlay = 0;
+      updateLcd = true;
       pressedButton[back] = false;
     }
   }
 
   void CheckMenuRestarted() {
     if (gameOver == true || gameFinished == true) {
-      updateLCD = true;
       gameOver = false;
       gameFinished = false;
     }
@@ -1212,19 +1553,19 @@ public:
 
   void interactiveMenu() {
     CheckMenuRestarted();
-    if (optionMainMenu != 0 && optionSettings == 0 && optionHighscores == 0 && optionAbout == 0) {
+    if (optionMainMenu != 0 && optionSettings == 0 && optionHighscores == 0 && optionAbout == 0 && optionHowToPlay == 0) {
       optionMainMenu = moveUpDown(optionMainMenu, numberOfOptionsMain);
-      if (updateLCD == true) {
+      if (updateLcd == true) {
         printMainMenu();
-        updateLCD = false;
+        updateLcd = false;
       }
       mainMenu();
-    } else if (optionMainMenu != 0 && optionSettings != 0 && optionHighscores == 0 && optionAbout == 0) {
+    } else if (optionSettings != 0) {
       if (changeMatrixIntensity == false && changeLcdIntensity == false && toggleTheSound == false) {
         optionSettings = moveUpDown(optionSettings, numberOfOptionsSettings);
-        if (updateLCD == true) {
+        if (updateLcd == true) {
           printSettingsMenu();
-          updateLCD = false;
+          updateLcd = false;
         }
         settingsMenu();
       } else if (changeMatrixIntensity == true) {
@@ -1234,25 +1575,32 @@ public:
       } else if (toggleTheSound == true) {
         toggleSound();
       }
-    } else if (optionMainMenu != 0 && optionSettings == 0 && optionHighscores != 0 && optionAbout == 0) {
+    } else if (optionHighscores != 0) {
       optionHighscores = moveUpDown(optionHighscores, numberOfOptionsHighscores);
-      if (updateLCD == true) {
+      if (updateLcd == true) {
         printHighscoresMenu();
-        updateLCD = false;
+        updateLcd = false;
       }
       highscoresMenu();
-    } else if (optionMainMenu != 0 && optionSettings == 0 && optionHighscores == 0 && optionAbout != 0) {
+    } else if (optionAbout != 0) {
       optionAbout = moveUpDown(optionAbout, numberOfOptionsAbout);
-      if (updateLCD == true) {
+      if (updateLcd == true) {
         printAboutMenu();
-        updateLCD = false;
+        updateLcd = false;
       }
       aboutMenu();
+    } else if (optionHowToPlay != 0) {
+      optionHowToPlay = moveUpDown(optionHowToPlay, numberOfOptionsHowToPlay);
+      if (updateLcd == true) {
+        printHowToPlayMenu();
+        updateLcd = false;
+      }
+      howToPlayMenu();
     }
   }
 };
 
-Menu menu = Menu(1, 0, 0, 0);
+Menu menu = Menu();
 
 //FUNCTIONS #############################################################################################################################
 
@@ -1285,20 +1633,14 @@ void mapDisplay() {
 }
 
 void makeFovMatrix() {
-  // Serial.println();
   for (int row = player.getPositionX() - 4; row < player.getPositionX() + 4; row++) {
     for (int col = player.getPositionY() - 4; col < player.getPositionY() + 4; col++) {
       if (row >= 0 && row < mapSize && col >= 0 && col < mapSize) {
         fovMatrix[row + 4 - player.getPositionX()][col + 4 - player.getPositionY()] = outputMatrix[row][col];
-        // Serial.print(fovMatrix[row + 4 - player.getPositionX()][col + 4 - player.getPositionY()]);
-        // Serial.print(" ");
       } else {
         fovMatrix[row + 4 - player.getPositionX()][col + 4 - player.getPositionY()] = 0;
-        // Serial.print(fovMatrix[row + 4 - player.getPositionX()][col + 4 - player.getPositionY()]);
-        // Serial.print(" ");
       }
     }
-    // Serial.println();
   }
 }
 
@@ -1349,5 +1691,11 @@ void debounce() {
       }
     }
     lastReading[currentButton] = reading[currentButton];
+  }
+}
+
+void resetButtons() {
+  for (int currentButton = 0; currentButton < numberOfButtons; currentButton++) {
+    pressedButton[currentButton] = false;
   }
 }
